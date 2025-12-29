@@ -9,6 +9,7 @@ import os
 import logging
 
 # --- CONFIGURATION & LOGGING ---
+# We use logging so you can see output in the Render Dashboard
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,22 @@ def scrape_mbmc_data():
 init_db()
 
 # --- SCHEDULER ---
-# Run scraper every 6 hours
+# Run scraper every 6 hours automatically
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scrape_mbmc_data, trigger="interval", hours=6)
 scheduler.start()
 
 # --- ROUTES ---
+
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
+
+@app.route('/force-refresh')
+def force_refresh():
+    """Manual trigger to run the robot immediately"""
+    scrape_mbmc_data()
+    return "✅ Manual Scrape Complete! Go back to the homepage to see data."
 
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
