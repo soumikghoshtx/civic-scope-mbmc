@@ -8,7 +8,7 @@ from datetime import datetime
 import os
 import logging
 
-# Configure logging
+# Configure logging so we can see what's happening in Render logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -21,19 +21,23 @@ MBMC_URL = "https://mbmc.gov.in/mbmc/etender-mbmc"
 
 # --- DATABASE SETUP ---
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS projects (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                department TEXT,
-                publish_date TEXT,
-                status TEXT,
-                last_checked TEXT
-            )
-        ''')
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    department TEXT,
+                    publish_date TEXT,
+                    status TEXT,
+                    last_checked TEXT
+                )
+            ''')
+            conn.commit()
+            logger.info("✅ Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"❌ Database Error: {e}")
 
 # --- THE AUTOMATED SCRAPER ROBOT ---
 def scrape_mbmc_data():
@@ -48,6 +52,8 @@ def scrape_mbmc_data():
             return
 
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # NOTE: This selector targets the standard table on MBMC's current site.
         table = soup.find('table') 
         
         if not table:
@@ -65,6 +71,7 @@ def scrape_mbmc_data():
                 cols = row.find_all('td')
                 if len(cols) < 3: continue
                 
+                # Extract Data (Robust fallback logic)
                 try:
                     p_id = cols[0].text.strip()
                     dept = cols[1].text.strip()
@@ -91,7 +98,12 @@ def scrape_mbmc_data():
     except Exception as e:
         logger.error(f"❌ Scraper Error: {e}")
 
+# --- STARTUP LOGIC (CRITICAL FOR RENDER) ---
+# We run this immediately so the DB exists before the server starts
+init_db()
+
 # --- SCHEDULER ---
+# Run scraper every 6 hours
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scrape_mbmc_data, trigger="interval", hours=6)
 scheduler.start()
@@ -110,15 +122,3 @@ def get_projects():
             cursor.execute("SELECT * FROM projects ORDER BY last_checked DESC")
             rows = cursor.fetchall()
             data = [dict(row) for row in rows]
-            return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# --- START SERVER ---
-if __name__ == '__main__':
-    if not os.path.exists(DB_FILE):
-        init_db()
-        scrape_mbmc_data() 
-    
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
