@@ -8,14 +8,13 @@ from datetime import datetime
 import os
 import logging
 
-# Configure logging so we can see what's happening in Render logs
+# --- CONFIGURATION & LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
-# --- CONFIGURATION ---
 DB_FILE = "mbmc_data.db"
 MBMC_URL = "https://mbmc.gov.in/mbmc/etender-mbmc"
 
@@ -98,8 +97,8 @@ def scrape_mbmc_data():
     except Exception as e:
         logger.error(f"❌ Scraper Error: {e}")
 
-# --- STARTUP LOGIC (CRITICAL FOR RENDER) ---
-# We run this immediately so the DB exists before the server starts
+# --- STARTUP LOGIC ---
+# Run this immediately so the DB exists before the server starts on Render
 init_db()
 
 # --- SCHEDULER ---
@@ -122,3 +121,14 @@ def get_projects():
             cursor.execute("SELECT * FROM projects ORDER BY last_checked DESC")
             rows = cursor.fetchall()
             data = [dict(row) for row in rows]
+            return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- LOCAL EXECUTION ---
+if __name__ == '__main__':
+    # Only run an initial scrape if we are testing locally
+    scrape_mbmc_data()
+    
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
